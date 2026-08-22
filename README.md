@@ -8,4 +8,4 @@ Example questions the system can answer:
   What is EDR?
   What is the 3rd-party risk policy?
   
-The system uses a Retrieval-Augmented Generation (RAG) architecture — meaning the chatbot does not rely on the LLM's general knowledge. Instead, it retrieves relevant sections directly from approved DPW policy documents and generates an answer grounded strictly in that content.
+The system uses a Retrieval-Augmented Generation (RAG) architecture — meaning the chatbot does not rely on the LLM's general knowledge. Instead, it retrieves relevant sections directly from approved policy documents and generates an answer grounded strictly in that content.
