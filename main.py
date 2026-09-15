@@ -2,7 +2,7 @@ import os
 from fastapi import FastAPI
 from pydantic import BaseModel
 from sentence_transformers import SentenceTransformer
-import chromadb
+from qdrant_client import QdrantClient
 from google import genai
 from dotenv import load_dotenv
 
@@ -10,10 +10,10 @@ load_dotenv()
 
 app = FastAPI(title="Policy Assistant Chatbot")
 
-# Load embedding model + chroma collection once at startup
+# Load embedding model + qdrant collection once at startup
 embed_model = SentenceTransformer("all-MiniLM-L6-v2")
-chroma_client = chromadb.PersistentClient(path="chroma_db")
-collection = chroma_client.get_collection(name="dpw_policies")
+qdrant_client = QdrantClient(path="qdrant_db")
+COLLECTION_NAME = "dpw_policies"
 
 # Configure Gemini
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
@@ -39,12 +39,14 @@ def health():
 
 def retrieve_chunks(question: str, top_k: int = 3):
     query_embedding = embed_model.encode(question).tolist()
-    results = collection.query(
-        query_embeddings=[query_embedding],
-        n_results=top_k
-    )
-    docs = results["documents"][0] if results["documents"] else []
-    sources = results["metadatas"][0] if results["metadatas"] else []
+    results = qdrant_client.query_points(
+        collection_name=COLLECTION_NAME,
+        query=query_embedding,
+        limit=top_k
+    ).points
+
+    docs = [point.payload["text"] for point in results]
+    sources = [{"source": point.payload["source"]} for point in results]
     return docs, sources
 
 

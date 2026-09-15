@@ -2,10 +2,12 @@ import os
 from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from sentence_transformers import SentenceTransformer
-import chromadb
+from qdrant_client import QdrantClient
+from qdrant_client.models import VectorParams, Distance, PointStruct
 
 DOCS_FOLDER = "policy_docs"
-CHROMA_PATH = "chroma_db"
+QDRANT_PATH = "qdrant_db"
+COLLECTION_NAME = "dpw_policies"
 
 def load_documents():
     docs = []
@@ -34,23 +36,36 @@ def build_vector_store():
 
     print("Loading embedding model...")
     model = SentenceTransformer("all-MiniLM-L6-v2")
+    vector_size = model.get_sentence_embedding_dimension()
 
-    client = chromadb.PersistentClient(path=CHROMA_PATH)
-    try:
-        client.delete_collection(name="dpw_policies")
-    except Exception:
-        pass
-    collection = client.create_collection(name="dpw_policies")
+    # local, file-based Qdrant (no server needed to run separately)
+    client = QdrantClient(path=QDRANT_PATH)
+
+    # recreate collection fresh each time we re-run ingestion
+    if client.collection_exists(COLLECTION_NAME):
+        client.delete_collection(COLLECTION_NAME)
+
+    client.create_collection(
+        collection_name=COLLECTION_NAME,
+        vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE)
+    )
 
     print("Embedding + storing chunks...")
+    points = []
     for i, chunk in enumerate(chunks):
         embedding = model.encode(chunk.page_content).tolist()
-        collection.add(
-            ids=[f"chunk_{i}"],
-            embeddings=[embedding],
-            documents=[chunk.page_content],
-            metadatas=[{"source": os.path.basename(chunk.metadata.get("source", "unknown"))}]
+        points.append(
+            PointStruct(
+                id=i,
+                vector=embedding,
+                payload={
+                    "text": chunk.page_content,
+                    "source": os.path.basename(chunk.metadata.get("source", "unknown"))
+                }
+            )
         )
+
+    client.upsert(collection_name=COLLECTION_NAME, points=points)
 
     print("Done! Vector store ready.")
 
